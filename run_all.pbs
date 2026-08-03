@@ -1,0 +1,133 @@
+#!/bin/bash
+#PBS -N unified_germline
+#PBS -q long
+#PBS -l nodes=1:ppn=4,mem=32g
+#PBS -l walltime=72:00:00
+#PBS -j oe
+
+set -Eeuo pipefail
+trap 'echo "[ERROR] Failed at line $LINENO" >&2' ERR
+
+log() { echo "[$(date '+%F %T')] $*"; }
+
+# ---------------------------------------------------------------------------
+# Directories
+# ---------------------------------------------------------------------------
+BASE="${PBS_O_WORKDIR:-$PWD}"
+cd "$BASE"
+
+JOB_TAG="${PBS_JOBID:-manual}"
+RUN_ROOT="/home_beegfs/$USER/nxf_work"
+
+# ---------------------------------------------------------------------------
+# Which entry point to run.  Default 'fastq' = the 5 paired-end samples in
+# samplesheet.csv, aligned from scratch.  'bam' = the 21 pre-aligned neuro
+# BAMs in samplesheet_bam.csv.
+#
+#   qsub run_all.pbs                       # fastq
+#   qsub -v RUN_TAG=bam run_all.pbs        # bam
+#
+# Each tag gets its own work dir AND its own Nextflow cache dir. The cache is
+# what makes -resume work, and a bare `-resume` resumes whichever session ran
+# last -- so a shared cache would mean every switch between fastq and bam
+# throws away the other's completed work. Keeping them apart lets both stay
+# resumable independently. The 'bam' paths below are the pre-existing ones,
+# so the 21-BAM run's cache is not orphaned by this split.
+# ---------------------------------------------------------------------------
+RUN_TAG="${RUN_TAG:-fastq}"
+case "$RUN_TAG" in
+    fastq)
+        PARAMS_FILE="params/unified.yaml"
+        WORKDIR="$RUN_ROOT/$(basename "$BASE")_fastq"
+        NXF_CACHE_DIR="$BASE/.nextflow_fastq"
+        ;;
+    bam)
+        PARAMS_FILE="params/unified_bam.yaml"
+        WORKDIR="$RUN_ROOT/$(basename "$BASE")_unified"
+        NXF_CACHE_DIR="$BASE/.nextflow"
+        ;;
+    *)
+        echo "[ERROR] RUN_TAG must be 'fastq' or 'bam', got '$RUN_TAG'" >&2
+        exit 2
+        ;;
+esac
+export NXF_CACHE_DIR
+
+[[ -f "$BASE/$PARAMS_FILE" ]] || { echo "[ERROR] missing $BASE/$PARAMS_FILE" >&2; exit 2; }
+
+NXF_HOME="$RUN_ROOT/nextflow_home"
+SINGULARITY_CACHE="$RUN_ROOT/singularity_cache"
+NXF_TEMP="$RUN_ROOT/tmp/$JOB_TAG"
+LOGDIR="$BASE/logs"
+
+# Singularity unpacks OCI layers using hard links — beegfs does not support
+# this, so SIF builds fail.  The compute node's /tmp is a local ext4/xfs
+# filesystem with plenty of space and full POSIX semantics.
+SIF_TMPDIR="/tmp/${USER}_${JOB_TAG}"
+
+mkdir -p "$WORKDIR" "$NXF_HOME" "$SINGULARITY_CACHE" "$NXF_TEMP" "$LOGDIR" "$SIF_TMPDIR"
+
+# Guaranteed log even if PBS drops the output file on fast failure
+exec > >(tee -a "$LOGDIR/run_${JOB_TAG}.log") 2>&1
+
+log "START: unified germline workflow"
+log "RUN_TAG=$RUN_TAG  PARAMS_FILE=$PARAMS_FILE"
+log "BASE=$BASE"
+log "WORKDIR=$WORKDIR"
+log "NXF_CACHE_DIR=$NXF_CACHE_DIR"
+log "NXF_TEMP=$NXF_TEMP"
+log "SIF_TMPDIR=$SIF_TMPDIR"
+
+log "Disk usage:"
+df -h "$RUN_ROOT" /tmp 2>/dev/null || true
+log "Inode usage:"
+df -ih "$RUN_ROOT" /tmp 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Modules — relax strict mode; module functions can return non-zero
+# ---------------------------------------------------------------------------
+set +u
+module purge || true
+module load java/jdk-21.0.2
+module load singularity || true
+set -u
+
+# ---------------------------------------------------------------------------
+# Nextflow settings
+# NXF_CACHE_DIR is set per RUN_TAG above; for RUN_TAG=bam it resolves to
+# $BASE/.nextflow, i.e. exactly the default location the earlier BAM runs
+# already wrote their cache and history to.
+# ---------------------------------------------------------------------------
+export NXF_VER=25.10.4
+export NXF_HOME
+export NXF_TEMP
+export NXF_OPTS="-Xms1g -Xmx16g -Djava.io.tmpdir=$NXF_TEMP"
+export NXF_ANSI_LOG=false
+
+# ---------------------------------------------------------------------------
+# Singularity / Apptainer — cache on beegfs, build temp on local /tmp
+# ---------------------------------------------------------------------------
+export NXF_SINGULARITY_CACHEDIR="$SINGULARITY_CACHE"
+export SINGULARITY_CACHEDIR="$SINGULARITY_CACHE"
+export APPTAINER_CACHEDIR="$SINGULARITY_CACHE"
+export SINGULARITY_TMPDIR="$SIF_TMPDIR"
+export APPTAINER_TMPDIR="$SIF_TMPDIR"
+
+log "Nextflow version:"
+nextflow -version || true
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+nextflow run Viktorija0719/nf-germline-variant-calling \
+    -profile singularity \
+    -params-file "$PARAMS_FILE" \
+    -c conf/rtu_pbs.config \
+    -c conf/genomes_local.config \
+    -work-dir "$WORKDIR" \
+    -with-report  "$LOGDIR/unified_${RUN_TAG}_report.html" \
+    -with-timeline "$LOGDIR/unified_${RUN_TAG}_timeline.html" \
+    -with-trace   "$LOGDIR/unified_${RUN_TAG}_trace.txt" \
+    -resume
+
+log "DONE: unified germline workflow"

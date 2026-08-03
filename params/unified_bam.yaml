@@ -1,0 +1,129 @@
+# Unified germline WES pipeline — site parameters for RSU cluster
+# Run with (from this run_germline/ directory):
+#   nextflow run ../nf-germline-variant-calling -profile singularity \
+#     -params-file params/unified.yaml -c conf/rtu_pbs.config
+
+input:  "samplesheet_bam.csv"
+outdir: "results"
+
+# The neuro BAMs were produced upstream as <sample>.<run>_rmdup.bam and carry
+# that run index in their SM tag (SM 'S3809Nr13.1' for sample 'S3809Nr13'),
+# uniformly across all 21 samples. Allow just that suffix in BAM_PREFLIGHT —
+# a genuine sample swap still fails. Callers take VCF sample names from SM,
+# so per-sample and cohort VCFs keep the '.1' names.
+bam_preflight_sm_suffix: '[.][0-9]+'
+
+# -----------------------------------------------------------------------
+# Reference
+# -----------------------------------------------------------------------
+genome:        "RSU.GRCh38_no_alt"
+igenomes_base: "/home/groups/rsu/nf-core-variant-calling/igenomes"
+
+# -----------------------------------------------------------------------
+# Intervals / targets
+# -----------------------------------------------------------------------
+wes:       true
+intervals: "/home/groups/rsu/nf-core-variant-calling/Twist_WESwithRefSeq_umap_s100_70_no_blacklist_hg38_PAR_regions.bed"
+master_bed: "/home/groups/rsu/nf-core-variant-calling/Twist_WESwithRefSeq_umap_s100_70_no_blacklist_hg38_PAR_regions.bed"
+
+# Cap each scatter chunk at ~2 Mb of target sequence so GenomicsDBImport/
+# GenotypeGVCFs never build a workspace for more than a fraction of the
+# exome at once. The whole target BED (~80.5 Mb) was previously emitted as
+# a single chunk (chunk_target_seconds defaults implied a 6B-base target),
+# which pushed GenomicsDBImport RSS past the 64 GB PBS/cgroup limit
+# (exit 247) at chr1:923341-925052. This yields ~40-50 chunks instead of 1.
+chunk_target_bp: 2000000
+
+# -----------------------------------------------------------------------
+# Preprocessing
+# -----------------------------------------------------------------------
+save_output_as_bam: true
+bqsr_enable:        true
+known_sites:
+  - "/home/groups/rsu/nf-core-variant-calling/igenomes/Homo_sapiens/GATK/GRCh38/Sequence/DbSnp/dbsnp_146.hg38.vcf.gz"
+  - "/home/groups/rsu/nf-core-variant-calling/igenomes/Homo_sapiens/GATK/GRCh38/Sequence/KnownIndels/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+
+# -----------------------------------------------------------------------
+# SNV/indel callers
+# -----------------------------------------------------------------------
+deepvariant_enable:     true
+strelka_enable:         true
+haplotypecaller_enable: true
+joint_germline:         true
+freebayes_enable:       true
+
+# -----------------------------------------------------------------------
+# SV/CNV callers
+# -----------------------------------------------------------------------
+manta_enable:           true
+tiddit_enable:          true
+depthofcoverage_enable: true
+xhmm_enable:            true
+exomedepth_enable:      true
+svdb_enable:            true
+annotsv_enable:         true
+knotannotsv_enable:     true
+
+
+annotsv_annotations_dir: "/home/groups/rsu/nf-core-variant-calling/annotation/AnnotSV_3.1.3_reference/AnnotSV"
+annotsv_config_file:     "/home/groups/rsu/nf-core-variant-calling/annotation/AnnotSV_configfile_220124_rsu.txt"
+annotsv_panels_tsv:      "/home/groups/rsu/nf-core-variant-calling/annotation/AnnotSV_panels_superpanels_v07092023_RSU_seqr.tsv"
+knotannotsv_config_file: "/home/groups/rsu/nf-core-variant-calling/annotation/knotAnnotSV_configfile_xlsm_220124.txt"
+
+# gatk_gene_list / xhmm_param_file intentionally not set here — they fall
+# back to the pipeline's own ${projectDir}/resources/... defaults
+# (nf-germline-variant-calling/nextflow.config), which resolve correctly
+# regardless of which directory you launch nextflow from.
+
+
+# -----------------------------------------------------------------------
+# QC
+# -----------------------------------------------------------------------
+fastqc_enable:       true
+idxstats_enable:     true
+qualimap_enable:     true
+verifybamid2_enable: true
+
+
+# ROH — off locally
+roh_enable: false
+
+# -----------------------------------------------------------------------
+# Benchmarking
+# -----------------------------------------------------------------------
+run_benchmark_small:      true
+run_benchmark_structural: false
+
+# RTGtools requires a pre-built SDF of the reference.
+# Build once with: rtg format -o ref.sdf <fasta>
+# rtgtools_sdf: "/home/groups/rsu/nf-core-variant-calling/GRCh38.sdf"   # TODO: verify path
+
+truth_small_vcf: "/home/groups/rsu/nf-core-variant-calling/truth_vcf/HG002_GRCh38_v5.0q_smvar.vcf.gz"
+truth_small_bed: "/home/groups/rsu/nf-core-variant-calling/truth_vcf/HG002_GRCh38_v5.0q_smvar.benchmark.bed"
+
+truth_sv_vcf:    "/home/groups/rsu/nf-core-variant-calling/truth_vcf/HG002_GRCh38_v5.0q_stvar.vcf.gz"
+truth_sv_bed:    "/home/groups/rsu/nf-core-variant-calling/truth_vcf/HG002_GRCh38_v5.0q_stvar.benchmark.bed"
+
+targets_bed: "/home/groups/rsu/nf-core-variant-calling/Twist_WESwithRefSeq_umap_s100_70_no_blacklist_hg38_PAR_regions.bed"
+
+
+# -----------------------------------------------------------------------
+# TP VCF annotation (VEP + snpEff + SnpSift + merge)
+# -----------------------------------------------------------------------
+run_tp_annotation: true
+
+vep_cache:         "/home/groups/rsu/nf-core-variant-calling/sarek_cache/vep_cache"
+vep_cache_version: 115
+vep_genome:        "GRCh38"
+vep_species:       "homo_sapiens"
+
+snpeff_cache:     "/home/groups/rsu/nf-core-variant-calling/sarek_cache/snpeff_cache"
+snpeff_db:        "GRCh38.99"
+snpsift_databases: "params/snpsift_databases.csv"
+
+vep_spliceai:    true
+spliceai_snv:    "/home/groups/rsu/nf-core-variant-calling/vep_data/spliceai_scores.masked.snv.hg38.vep1.vcf.gz"
+spliceai_indel:  "/home/groups/rsu/nf-core-variant-calling/vep_data/spliceai_scores.masked.indel.hg38.vep1.vcf.gz"
+
+vep_mastermind:  true
+mastermind_file: "/home/groups/rsu/nf-core-variant-calling/vep_data/mastermind_cited_variants_reference-2021.04.02-grch38.vcf.gz"
