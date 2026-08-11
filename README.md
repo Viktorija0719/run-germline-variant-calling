@@ -81,8 +81,8 @@ work dir, and Nextflow cache dir to use:
 
 | `RUN_TAG` | params file | work dir | cache dir |
 |-----------|-------------|----------|-----------|
-| `fastq` (default) | `params/unified.yaml` | `…/nxf_work/<dir>_fastq` | `.nextflow_fastq/` |
-| `bam` | `params/unified_bam.yaml` | `…/nxf_work/<dir>_unified` | `.nextflow/` |
+| `fastq` (default) | `params/unified.yaml` | `…/nxf_work/germline_fastq` | `.nextflow_fastq/` |
+| `bam` | `params/unified_bam.yaml` | `…/nxf_work/germline_bam` | `.nextflow/` |
 
 The work dirs and caches are kept separate on purpose. A bare `-resume` resumes
 whichever session ran last, so a shared cache dir would mean each switch between

@@ -31,19 +31,21 @@ RUN_ROOT="/home_beegfs/$USER/nxf_work"
 # what makes -resume work, and a bare `-resume` resumes whichever session ran
 # last -- so a shared cache would mean every switch between fastq and bam
 # throws away the other's completed work. Keeping them apart lets both stay
-# resumable independently. The 'bam' paths below are the pre-existing ones,
-# so the 21-BAM run's cache is not orphaned by this split.
+# resumable independently. The 'bam' cache dir is the pre-existing .nextflow,
+# so the 21-BAM run's cache is not orphaned by this split -- but note the work
+# dirs were renamed to germline_{fastq,bam}, so an existing work tree has to be
+# moved to the new name for -resume to still find its task dirs.
 # ---------------------------------------------------------------------------
 RUN_TAG="${RUN_TAG:-fastq}"
 case "$RUN_TAG" in
     fastq)
         PARAMS_FILE="params/unified.yaml"
-        WORKDIR="$RUN_ROOT/$(basename "$BASE")_fastq"
+        WORKDIR="$RUN_ROOT/germline_fastq"
         NXF_CACHE_DIR="$BASE/.nextflow_fastq"
         ;;
     bam)
         PARAMS_FILE="params/unified_bam.yaml"
-        WORKDIR="$RUN_ROOT/$(basename "$BASE")_unified"
+        WORKDIR="$RUN_ROOT/germline_bam"
         NXF_CACHE_DIR="$BASE/.nextflow"
         ;;
     *)
