@@ -22,8 +22,9 @@ igenomes_base: "/home/groups/rsu/nf-core-variant-calling/igenomes"
 # -----------------------------------------------------------------------
 # Intervals / targets
 # -----------------------------------------------------------------------
+# master_bed is the single target-BED parameter — there is no `intervals`
+# param in this pipeline (that is a Sarek name). See params/unified.yaml.
 wes:       true
-intervals: "/home/groups/rsu/nf-core-variant-calling/Twist_WESwithRefSeq_umap_s100_70_no_blacklist_hg38_PAR_regions.bed"
 master_bed: "/home/groups/rsu/nf-core-variant-calling/Twist_WESwithRefSeq_umap_s100_70_no_blacklist_hg38_PAR_regions.bed"
 
 # Cap each scatter chunk at ~2 Mb of target sequence so GenomicsDBImport/
@@ -36,12 +37,11 @@ chunk_target_bp: 2000000
 
 # -----------------------------------------------------------------------
 # Preprocessing
+#
+# No BQSR settings: the pipeline has no BaseRecalibrator/ApplyBQSR step and
+# passes an empty dbsnp channel to the GATK callers, so bqsr_enable /
+# known_sites / save_output_as_bam were never read. See params/unified.yaml.
 # -----------------------------------------------------------------------
-save_output_as_bam: true
-bqsr_enable:        true
-known_sites:
-  - "/home/groups/rsu/nf-core-variant-calling/igenomes/Homo_sapiens/GATK/GRCh38/Sequence/DbSnp/dbsnp_146.hg38.vcf.gz"
-  - "/home/groups/rsu/nf-core-variant-calling/igenomes/Homo_sapiens/GATK/GRCh38/Sequence/KnownIndels/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
 
 # -----------------------------------------------------------------------
 # SNV/indel callers
